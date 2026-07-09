@@ -568,6 +568,40 @@
     margin-bottom: 1rem;
   }
 
+  .article-toggle {
+    margin-bottom: 1rem;
+  }
+
+  .article-toggle__summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    user-select: none;
+  }
+
+  .article-toggle__summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .article-toggle__summary::before {
+    content: '+';
+    flex-shrink: 0;
+    font-size: 0.9em;
+    line-height: 1.2;
+    color: var(--color-text-muted);
+    transition: transform var(--transition);
+  }
+
+  .article-toggle[open] > .article-toggle__summary::before {
+    content: '−';
+  }
+
+  .article-toggle__body {
+    margin-top: 0.5rem;
+  }
+
   .article-text {
     font-size: 15px;
     color: var(--color-text-secondary);
