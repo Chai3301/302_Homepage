@@ -527,6 +527,78 @@
     window.addEventListener('resize', setSplitMode);
   }
 
+  /* ---------- 作品リスト：並び替え ---------- */
+  function initWorksListSort() {
+    const list = document.querySelector('.works-list');
+    if (!list) return;
+
+    const buttons = list.querySelectorAll('.works-list__sort');
+    const columnMap = {
+      file: 'file',
+      title: 'title',
+      year: 'year',
+      material: 'material',
+    };
+
+    let activeKey = null;
+    let direction = 1;
+
+    function getRows() {
+      return [...list.querySelectorAll('.works-list__row')];
+    }
+
+    function getCellValue(row, key) {
+      const col = row.querySelector(`.works-list__col--${columnMap[key]}`);
+      return col ? col.textContent.trim() : '';
+    }
+
+    function compareRows(a, b, key) {
+      const aValue = getCellValue(a, key);
+      const bValue = getCellValue(b, key);
+
+      if (key === 'year') {
+        const aYear = parseInt(aValue.match(/\d+/)?.[0] ?? '0', 10);
+        const bYear = parseInt(bValue.match(/\d+/)?.[0] ?? '0', 10);
+        return aYear - bYear;
+      }
+
+      return aValue.localeCompare(bValue, 'ja');
+    }
+
+    function updateButtons(key) {
+      buttons.forEach((button) => {
+        const isActive = button.dataset.sort === key;
+        button.classList.toggle('is-active', isActive);
+        button.setAttribute(
+          'aria-sort',
+          isActive ? (direction === 1 ? 'ascending' : 'descending') : 'none'
+        );
+      });
+    }
+
+    function sortBy(key) {
+      if (activeKey === key) {
+        direction *= -1;
+      } else {
+        activeKey = key;
+        direction = 1;
+      }
+
+      const sortedRows = getRows().sort(
+        (a, b) => compareRows(a, b, key) * direction
+      );
+
+      sortedRows.forEach((row) => list.appendChild(row));
+      updateButtons(key);
+    }
+
+    buttons.forEach((button) => {
+      button.addEventListener('click', () => sortBy(button.dataset.sort));
+    });
+
+    sortBy('year');
+  }
+
   /* ---------- ヒーローロゴ：ゆらゆら ---------- */
   function initHeroLogoFloat() {
     const logo = document.querySelector('.hero-logo');
@@ -542,6 +614,7 @@
     initLightbox();
     initArticleSplit();
     initFooterPath();
+    initWorksListSort();
     initHeroLogoFloat();
     if (!prefersReducedMotion) initHeroCanvas();
   }

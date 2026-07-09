@@ -3,7 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chai</title>
+  <link rel="icon" href="favicon.ico" sizes="any" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta property="og:image" content="https://chai3301.github.io/302_Homepage/assets/img/og-image.jpg" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:image" content="https://chai3301.github.io/302_Homepage/assets/img/og-image.jpg" />
+  <title>chai</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@300;400&display=swap" rel="stylesheet"> 
@@ -27,11 +34,11 @@
     </div>
     
     <div class="works-list" role="list">
-      <div class="works-list__header" aria-hidden="true">
-        <span class="works-list__col works-list__col--file">Name</span>
-        <span class="works-list__col works-list__col--title">Title</span>
-        <span class="works-list__col works-list__col--year">Year</span>
-        <span class="works-list__col works-list__col--material">Material</span>
+      <div class="works-list__header">
+        <button type="button" class="works-list__sort works-list__col works-list__col--file" data-sort="file" aria-sort="none">Name</button>
+        <button type="button" class="works-list__sort works-list__col works-list__col--title" data-sort="title" aria-sort="none">Title</button>
+        <button type="button" class="works-list__sort works-list__col works-list__col--year" data-sort="year" aria-sort="none">Year</button>
+        <button type="button" class="works-list__sort works-list__col works-list__col--material" data-sort="material" aria-sort="none">Material</button>
       </div>
 
       <a href="works/epistula-ao.html" class="works-list__row work-card js-reveal" role="listitem">
