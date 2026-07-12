@@ -391,6 +391,338 @@
     });
   }
 
+  /* ---------- Markdown ---------- */
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function renderInlineMarkdown(text) {
+    return text
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/_(.+?)_/g, '<em>$1</em>')
+      .replace(/`(.+?)`/g, '<code>$1</code>');
+  }
+
+  function renderMarkdown(src) {
+    const normalized = String(src || '').replace(/\r\n/g, '\n').trim();
+    if (!normalized) return '';
+
+    return normalized
+      .split(/\n{2,}/)
+      .map((block) => {
+        const lines = block.split('\n');
+        const first = lines[0] || '';
+
+        const heading = first.match(/^(#{1,3})\s+(.*)$/);
+        if (heading) {
+          const level = heading[1].length;
+          const content = renderInlineMarkdown(escapeHtml(heading[2].trim()));
+          let html = `<h${level} class="md-preview__h${level}">${content}</h${level}>`;
+          if (lines.length > 1) {
+            const rest = renderInlineMarkdown(
+              escapeHtml(lines.slice(1).join('\n'))
+            ).replace(/\n/g, '<br>');
+            html += `<p class="article-text">${rest}</p>`;
+          }
+          return html;
+        }
+
+        if (lines.every((line) => !line.trim() || /^[-*]\s+/.test(line))) {
+          const items = lines
+            .filter((line) => line.trim())
+            .map((line) => {
+              const item = renderInlineMarkdown(
+                escapeHtml(line.replace(/^[-*]\s+/, ''))
+              );
+              return `<li>${item}</li>`;
+            })
+            .join('');
+          return `<ul class="md-preview__list">${items}</ul>`;
+        }
+
+        const html = renderInlineMarkdown(escapeHtml(lines.join('\n'))).replace(
+          /\n/g,
+          '<br>'
+        );
+        return `<p class="article-text">${html}</p>`;
+      })
+      .join('\n');
+  }
+
+  function createMdThumbnailButton(src) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'article-gallery-text-item';
+    button.dataset.textLightbox = '';
+    button.dataset.mdSrc = src;
+    button.innerHTML =
+      '<div class="article-gallery-text-item__body md-preview"></div>';
+    return button;
+  }
+
+  async function loadMarkdownInto(el, src) {
+    const body = el.matches('.article-gallery-text-item__body')
+      ? el
+      : el.querySelector('.article-gallery-text-item__body');
+    if (!body || !src) return;
+
+    try {
+      const markdown = await resolveMarkdownSource(src);
+      body.innerHTML = renderMarkdown(markdown);
+      body.classList.add('md-preview');
+    } catch (error) {
+      body.innerHTML =
+        '<p class="article-text">テキストを読み込めませんでした。</p>';
+      console.warn('Failed to load markdown:', src, error);
+    }
+  }
+
+  function lookupMdContent(src) {
+    const store = window.MD_CONTENT;
+    if (!store || typeof store !== 'object') return null;
+
+    const candidates = [
+      src,
+      src.replace(/^\.\.\//, ''),
+      src.replace(/^\//, ''),
+      src.split('/').pop(),
+    ];
+
+    try {
+      const absolute = new URL(src, window.location.href);
+      candidates.push(absolute.href, absolute.pathname);
+      const parts = absolute.pathname.split('/assets/');
+      if (parts.length > 1) {
+        candidates.push('assets/' + parts[1]);
+        candidates.push('../assets/' + parts[1]);
+      }
+    } catch (error) {
+      // ignore invalid URL
+    }
+
+    for (const key of candidates) {
+      if (key && typeof store[key] === 'string') return store[key];
+    }
+    return null;
+  }
+
+  async function resolveMarkdownSource(src) {
+    const cached = lookupMdContent(src);
+    if (cached != null) return cached;
+
+    const url = new URL(src, window.location.href).href;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.text();
+  }
+
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      const existing = document.querySelector(`script[src="${src}"]`);
+      if (existing) {
+        if (window.MD_CONTENT) {
+          resolve();
+          return;
+        }
+        existing.addEventListener('load', () => resolve());
+        existing.addEventListener('error', () =>
+          reject(new Error(`Failed to load ${src}`))
+        );
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error(`Failed to load ${src}`));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function ensureMdContent() {
+    if (window.MD_CONTENT) return;
+    const mainScript = document.querySelector('script[src*="script.js"]');
+    const mdSrc = mainScript
+      ? mainScript.src.replace(/script\.js(?:\?.*)?$/, 'md-content.js')
+      : new URL('../assets/js/md-content.js', window.location.href).href;
+    try {
+      await loadScriptOnce(mdSrc);
+    } catch (error) {
+      console.warn('md-content.js unavailable, falling back to fetch', error);
+    }
+  }
+
+  async function initMdThumbnails() {
+    const needsMarkdown = document.querySelector(
+      '[data-md-files], [data-md-src]'
+    );
+    if (!needsMarkdown) return;
+
+    await ensureMdContent();
+
+    const galleries = document.querySelectorAll('[data-md-files]');
+    galleries.forEach((gallery) => {
+      let files = [];
+      try {
+        files = JSON.parse(gallery.getAttribute('data-md-files') || '[]');
+      } catch (error) {
+        console.warn('Invalid data-md-files JSON', error);
+      }
+      if (!Array.isArray(files)) return;
+      gallery.innerHTML = '';
+      files.forEach((src) => {
+        if (typeof src !== 'string' || !src) return;
+        gallery.appendChild(createMdThumbnailButton(src));
+      });
+    });
+
+    const targets = [...document.querySelectorAll('[data-md-src]')];
+    await Promise.all(
+      targets.map((el) => loadMarkdownInto(el, el.dataset.mdSrc))
+    );
+  }
+
+  /* ---------- テキストライトボックス（埋め込み文書） ---------- */
+  function initTextLightbox() {
+    const toggles = [...document.querySelectorAll('.article-toggle')];
+    const textItems = [...document.querySelectorAll('[data-text-lightbox]')];
+    if (!toggles.length && !textItems.length) return;
+
+    const entries = [];
+
+    toggles.forEach((toggle) => {
+      const summary = toggle.querySelector('.article-toggle__summary');
+      const body = toggle.querySelector('.article-toggle__body');
+      if (!summary || !body) return;
+      const title = summary.textContent.trim();
+      entries.push({
+        label: title,
+        title,
+        bodyHtml: body.innerHTML,
+        trigger: summary,
+        beforeOpen: () => {
+          toggle.open = false;
+        },
+      });
+    });
+
+    textItems.forEach((item) => {
+      const body = item.querySelector('.article-gallery-text-item__body');
+      if (!body) return;
+      const title =
+        item.querySelector('.article-gallery-text-item__title')?.textContent.trim() ||
+        '';
+      const plain = body.textContent.replace(/\s+/g, ' ').trim();
+      const label = title || plain.slice(0, 28) + (plain.length > 28 ? '…' : '');
+      entries.push({
+        label,
+        title,
+        bodyHtml: body.innerHTML,
+        trigger: item,
+      });
+    });
+
+    if (!entries.length) return;
+
+    const lightbox = document.createElement('div');
+    lightbox.className = 'lightbox lightbox--text';
+    lightbox.hidden = true;
+    lightbox.setAttribute('role', 'dialog');
+    lightbox.setAttribute('aria-modal', 'true');
+    lightbox.setAttribute('aria-label', '文書表示');
+    lightbox.innerHTML = `
+      <div class="lightbox-text__blur" data-text-lightbox-close></div>
+      <aside class="lightbox-text__sidebar">
+        <nav class="lightbox-text__list" aria-label="テキスト一覧"></nav>
+      </aside>
+      <article class="lightbox-text__document">
+        <h2 class="lightbox-text__title"></h2>
+        <div class="lightbox-text__body"></div>
+      </article>
+    `;
+    document.body.appendChild(lightbox);
+
+    const titleEl = lightbox.querySelector('.lightbox-text__title');
+    const bodyEl = lightbox.querySelector('.lightbox-text__body');
+    const listEl = lightbox.querySelector('.lightbox-text__list');
+    let lastFocused = null;
+    let currentIndex = 0;
+
+    entries.forEach((entry, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'lightbox-text__list-item';
+      button.textContent = entry.label;
+      button.addEventListener('click', () => showAt(index));
+      listEl.appendChild(button);
+      entry.listButton = button;
+    });
+
+    function showAt(index) {
+      currentIndex = (index + entries.length) % entries.length;
+      const entry = entries[currentIndex];
+      titleEl.textContent = entry.title || '';
+      bodyEl.innerHTML = entry.bodyHtml;
+      bodyEl.classList.toggle(
+        'md-preview',
+        Boolean(entry.trigger?.dataset?.mdSrc) ||
+          Boolean(entry.bodyHtml && entry.bodyHtml.includes('md-preview__'))
+      );
+      entries.forEach((item, i) => {
+        item.listButton.classList.toggle('is-active', i === currentIndex);
+      });
+      bodyEl.scrollTop = 0;
+    }
+
+    function openAt(index) {
+      const entry = entries[index];
+      if (entry.beforeOpen) entry.beforeOpen();
+      lastFocused = document.activeElement;
+      showAt(index);
+      lightbox.hidden = false;
+      document.body.classList.add('is-lightbox-open');
+      if (entries[currentIndex]?.listButton) {
+        entries[currentIndex].listButton.focus();
+      }
+    }
+
+    function close() {
+      lightbox.hidden = true;
+      titleEl.textContent = '';
+      bodyEl.innerHTML = '';
+      document.body.classList.remove('is-lightbox-open');
+      if (lastFocused && typeof lastFocused.focus === 'function') {
+        lastFocused.focus();
+      }
+    }
+
+    entries.forEach((entry, index) => {
+      entry.trigger.addEventListener('click', (e) => {
+        if (entry.trigger.matches('summary, .article-toggle__summary')) {
+          e.preventDefault();
+        }
+        openAt(index);
+      });
+    });
+
+    lightbox.addEventListener('click', (e) => {
+      if (e.target.closest('[data-text-lightbox-close]')) close();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (lightbox.hidden) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      }
+    });
+  }
+
   /* ---------- スクロールでナビに影 ---------- */
   function initNavScroll() {
     const nav = document.querySelector('.nav');
@@ -402,6 +734,68 @@
 
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
+  }
+
+  /* ---------- フッター：ギャラリー列数（1〜6） ---------- */
+  function initGalleryColumns() {
+    const gallery = document.querySelector(
+      '.article-gallery, .article-gallery--scroll'
+    );
+    const footer = document.querySelector('.footer');
+    if (!gallery || !footer || footer.querySelector('.footer-gallery-cols')) {
+      return;
+    }
+
+    const isTextGrid = Boolean(document.querySelector('.article--text-grid'));
+    const desktopQuery = window.matchMedia('(min-width: 901px)');
+    const STORAGE_KEY = isTextGrid ? 'gallery-cols-text' : 'gallery-cols';
+    const MIN = 1;
+    const MAX = 6;
+
+    function getDefaultCols() {
+      if (isTextGrid && desktopQuery.matches) return 5;
+      return 2;
+    }
+
+    function clampCols(value, fallback = getDefaultCols()) {
+      const n = Number.parseInt(value, 10);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.min(MAX, Math.max(MIN, n));
+    }
+
+    let cols = clampCols(localStorage.getItem(STORAGE_KEY));
+
+    const group = document.createElement('div');
+    group.className = 'footer-gallery-cols';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', 'ギャラリーの列数');
+
+    const buttons = [];
+    for (let i = MIN; i <= MAX; i += 1) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'footer-gallery-cols__btn';
+      button.textContent = String(i);
+      button.dataset.cols = String(i);
+      button.setAttribute('aria-pressed', 'false');
+      button.addEventListener('click', () => setCols(i));
+      group.appendChild(button);
+      buttons.push(button);
+    }
+
+    function setCols(next) {
+      cols = clampCols(next, cols);
+      document.documentElement.style.setProperty('--gallery-cols', String(cols));
+      localStorage.setItem(STORAGE_KEY, String(cols));
+      buttons.forEach((button) => {
+        const active = Number(button.dataset.cols) === cols;
+        button.classList.toggle('is-active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+    }
+
+    footer.appendChild(group);
+    setCols(cols);
   }
 
   /* ---------- フッター：パス表示 ---------- */
@@ -606,14 +1000,17 @@
     logo.classList.add('hero-logo--float');
   }
 
-  function boot() {
+  async function boot() {
     document.documentElement.classList.add('js-enabled');
     initInertialScroll();
     initScrollReveal();
     initNavScroll();
     initLightbox();
+    await initMdThumbnails();
+    initTextLightbox();
     initArticleSplit();
     initFooterPath();
+    initGalleryColumns();
     initWorksListSort();
     initHeroLogoFloat();
     if (!prefersReducedMotion) initHeroCanvas();
