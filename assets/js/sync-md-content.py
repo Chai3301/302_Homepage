@@ -8,12 +8,8 @@ out = root / "assets" / "js" / "md-content.js"
 
 content = {}
 for path in sorted(txt_root.rglob("*.md")):
-    text = path.read_text(encoding="utf-8")
     rel = path.relative_to(root).as_posix()
-    content[rel] = text
-    content[f"../{rel}"] = text
-    content[f"/{rel}"] = text
-    content[path.name] = text
+    content[rel] = path.read_text(encoding="utf-8")
 
 out.write_text(
     "window.MD_CONTENT = "
