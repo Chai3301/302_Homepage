@@ -1,0 +1,17 @@
+# Compiled binaries
+01_dynamic_array
+02_singly_linked_list
+03_doubly_linked_list
+04_stack
+05_queue
+06_binary_search_tree
+07_hash_table
+08_heap
+09_graph
+10_circular_buffer
+
+# Object files
+*.o
+
+# Debug files
+*.dSYM/
